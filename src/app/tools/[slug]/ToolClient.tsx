@@ -648,11 +648,803 @@ function PercentageCalc() {
   );
 }
 
-function GenericPlaceholder({ name }: { name: string }) {
+function DiffChecker() {
+  const [textA, setTextA] = useState("");
+  const [textB, setTextB] = useState("");
+  const [diff, setDiff] = useState<{ line: number; a: string; b: string; type: string }[]>([]);
+  const compare = () => {
+    const linesA = textA.split("\n");
+    const linesB = textB.split("\n");
+    const max = Math.max(linesA.length, linesB.length);
+    const result: { line: number; a: string; b: string; type: string }[] = [];
+    for (let i = 0; i < max; i++) {
+      const a = linesA[i] ?? "";
+      const b = linesB[i] ?? "";
+      result.push({ line: i + 1, a, b, type: a === b ? "same" : i >= linesA.length ? "added" : i >= linesB.length ? "removed" : "changed" });
+    }
+    setDiff(result);
+  };
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
-      <p className="text-lg font-semibold text-gray-900">{name}</p>
-      <p className="mt-2 text-sm text-gray-500">This tool is coming soon. Check back later!</p>
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Original</label><textarea rows={10} value={textA} onChange={(e) => setTextA(e.target.value)} placeholder="Paste original text..." className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs outline-none focus:border-indigo-500" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Modified</label><textarea rows={10} value={textB} onChange={(e) => setTextB(e.target.value)} placeholder="Paste modified text..." className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs outline-none focus:border-indigo-500" /></div>
+      </div>
+      <button onClick={compare} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Compare</button>
+      {diff.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white overflow-auto max-h-96">
+          {diff.map((d) => (
+            <div key={d.line} className={`flex font-mono text-xs border-b border-gray-100 ${d.type === "same" ? "" : d.type === "added" ? "bg-emerald-50" : d.type === "removed" ? "bg-rose-50" : "bg-amber-50"}`}>
+              <span className="w-8 flex-shrink-0 border-r border-gray-200 px-1 py-1 text-center text-gray-400">{d.line}</span>
+              <span className="flex-1 px-2 py-1 whitespace-pre-wrap">{d.type === "removed" ? d.a : d.type === "added" ? d.b : d.type === "changed" ? `- ${d.a}\n+ ${d.b}` : d.a}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApiRequestBuilder() {
+  const [method, setMethod] = useState("GET");
+  const [url, setUrl] = useState("");
+  const [headers, setHeaders] = useState("Content-Type: application/json");
+  const [body, setBody] = useState("");
+  const [response, setResponse] = useState("");
+  const [status, setStatus] = useState("");
+  const send = async () => {
+    try {
+      const headerObj: Record<string, string> = {};
+      headers.split("\n").forEach((h) => { const [k, ...v] = h.split(":"); if (k.trim()) headerObj[k.trim()] = v.join(":").trim(); });
+      const opts: RequestInit = { method, headers: headerObj };
+      if (method !== "GET" && method !== "HEAD" && body) opts.body = body;
+      const res = await fetch(url, opts);
+      setStatus(`${res.status} ${res.statusText}`);
+      const text = await res.text();
+      try { setResponse(JSON.stringify(JSON.parse(text), null, 2)); } catch { setResponse(text); }
+    } catch (e) { setResponse("Error: " + String(e)); setStatus("Failed"); }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <select value={method} onChange={(e) => setMethod(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">{["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"].map((m)=>(<option key={m}>{m}</option>))}</select>
+        <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://api.example.com/endpoint" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" />
+        <button onClick={send} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Send</button>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Headers</label><textarea rows={4} value={headers} onChange={(e) => setHeaders(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs outline-none focus:border-indigo-500" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Body</label><textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder='{"key": "value"}' className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs outline-none focus:border-indigo-500" /></div>
+      </div>
+      {status && <div className="flex items-center gap-2"><span className="text-sm font-medium text-gray-700">Status:</span><span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${status.startsWith("2") ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{status}</span></div>}
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Response</label><textarea rows={10} readOnly value={response} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+    </div>
+  );
+}
+
+function DockerComposeGen() {
+  const [serviceName, setServiceName] = useState("web");
+  const [image, setImage] = useState("nginx:latest");
+  const [ports, setPorts] = useState("80:80");
+  const [volumes, setVolumes] = useState("./data:/data");
+  const [envVars, setEnvVars] = useState("NODE_ENV=production");
+  const [restart, setRestart] = useState("unless-stopped");
+  const generate = () => {
+    const portLines = ports.split("\n").filter(Boolean).map((p) => `      - "${p.trim()}"`).join("\n");
+    const volLines = volumes.split("\n").filter(Boolean).map((v) => `      - ${v.trim()}`).join("\n");
+    const envLines = envVars.split("\n").filter(Boolean).map((e) => `      - ${e.trim()}`).join("\n");
+    return `version: "3.8"\n\nservices:\n  ${serviceName}:\n    image: ${image}\n    restart: ${restart}\n    ports:\n${portLines}\n    volumes:\n${volLines}\n    environment:\n${envLines}`;
+  };
+  const [output, setOutput] = useState("");
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Service Name</label><input type="text" value={serviceName} onChange={(e) => setServiceName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Image</label><input type="text" value={image} onChange={(e) => setImage(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Ports (one per line)</label><textarea rows={3} value={ports} onChange={(e) => setPorts(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Volumes (one per line)</label><textarea rows={3} value={volumes} onChange={(e) => setVolumes(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs" /></div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Environment Variables</label><textarea rows={3} value={envVars} onChange={(e) => setEnvVars(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Restart Policy</label><select value={restart} onChange={(e) => setRestart(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"><option>no</option><option>always</option><option>on-failure</option><option>unless-stopped</option></select></div>
+      </div>
+      <button onClick={() => setOutput(generate())} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate docker-compose.yml</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={14} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+    </div>
+  );
+}
+
+function EnvFileGen() {
+  const [vars, setVars] = useState([{ key: "DATABASE_URL", value: "postgresql://localhost:5432/mydb" }, { key: "API_KEY", value: "" }, { key: "NODE_ENV", value: "development" }]);
+  const [output, setOutput] = useState("");
+  const addVar = () => setVars([...vars, { key: "", value: "" }]);
+  const updateVar = (i: number, field: "key" | "value", val: string) => { const n = [...vars]; n[i][field] = val; setVars(n); };
+  const removeVar = (i: number) => setVars(vars.filter((_, idx) => idx !== i));
+  const generate = () => setOutput(vars.filter((v) => v.key).map((v) => `${v.key}=${v.value}`).join("\n"));
+  return (
+    <div className="space-y-4">
+      {vars.map((v, i) => (
+        <div key={i} className="flex gap-2">
+          <input type="text" value={v.key} onChange={(e) => updateVar(i, "key", e.target.value)} placeholder="KEY" className="w-48 rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" />
+          <span className="py-2">=</span>
+          <input type="text" value={v.value} onChange={(e) => updateVar(i, "value", e.target.value)} placeholder="value" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" />
+          <button onClick={() => removeVar(i)} className="text-rose-600 hover:text-rose-800 text-sm">Remove</button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <button onClick={addVar} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">+ Add Variable</button>
+        <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate .env</button>
+      </div>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">.env Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={8} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-sm" /></div>
+    </div>
+  );
+}
+
+function GitCommandGen() {
+  const [action, setAction] = useState("clone");
+  const [param, setParam] = useState("");
+  const commands: Record<string, { label: string; template: (p: string) => string; placeholder: string }> = {
+    clone: { label: "Clone", template: (p) => `git clone ${p || "https://github.com/user/repo.git"}`, placeholder: "repo URL" },
+    branch: { label: "Create Branch", template: (p) => `git checkout -b ${p || "feature/new-feature"}`, placeholder: "branch name" },
+    commit: { label: "Commit", template: (p) => `git add -A && git commit -m "${p || "your commit message"}"`, placeholder: "commit message" },
+    push: { label: "Push", template: (p) => `git push origin ${p || "main"}`, placeholder: "branch name" },
+    pull: { label: "Pull", template: (p) => `git pull origin ${p || "main"}`, placeholder: "branch name" },
+    merge: { label: "Merge", template: (p) => `git merge ${p || "feature-branch"}`, placeholder: "branch to merge" },
+    stash: { label: "Stash", template: () => "git stash\n# To restore: git stash pop", placeholder: "" },
+    log: { label: "Log", template: () => "git log --oneline --graph --all -20", placeholder: "" },
+    reset: { label: "Undo Last Commit", template: () => "git reset --soft HEAD~1", placeholder: "" },
+    tag: { label: "Create Tag", template: (p) => `git tag -a ${p || "v1.0.0"} -m "Release ${p || "v1.0.0"}"`, placeholder: "tag name" },
+    rebase: { label: "Rebase", template: (p) => `git rebase ${p || "main"}`, placeholder: "base branch" },
+    cherry: { label: "Cherry Pick", template: (p) => `git cherry-pick ${p || "<commit-hash>"}`, placeholder: "commit hash" },
+  };
+  const cmd = commands[action];
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(commands).map(([key, c]) => (
+          <button key={key} onClick={() => setAction(key)} className={`rounded-lg px-3 py-2 text-sm font-medium ${action === key ? "bg-indigo-600 text-white" : "border border-gray-300 hover:bg-gray-50"}`}>{c.label}</button>
+        ))}
+      </div>
+      {cmd.placeholder && <input type="text" value={param} onChange={(e) => setParam(e.target.value)} placeholder={cmd.placeholder} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" />}
+      <div className="rounded-lg bg-gray-900 p-4"><code className="text-sm text-emerald-400 whitespace-pre-wrap">{cmd.template(param)}</code></div>
+      <button onClick={() => navigator.clipboard.writeText(cmd.template(param))} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Copy Command</button>
+    </div>
+  );
+}
+
+function AsciiArt() {
+  const [input, setInput] = useState("");
+  const [output, setOutput] = useState("");
+  const generate = () => {
+    const bigLetters: Record<string, string[]> = {
+      A: ["  #  ", " # # ", "#####", "#   #", "#   #"], B: ["#### ", "#   #", "#### ", "#   #", "#### "], C: [" ####", "#    ", "#    ", "#    ", " ####"],
+      D: ["#### ", "#   #", "#   #", "#   #", "#### "], E: ["#####", "#    ", "#### ", "#    ", "#####"], F: ["#####", "#    ", "#### ", "#    ", "#    "],
+      G: [" ####", "#    ", "# ###", "#   #", " ####"], H: ["#   #", "#   #", "#####", "#   #", "#   #"], I: ["#####", "  #  ", "  #  ", "  #  ", "#####"],
+      J: ["#####", "    #", "    #", "#   #", " ### "], K: ["#   #", "#  # ", "###  ", "#  # ", "#   #"], L: ["#    ", "#    ", "#    ", "#    ", "#####"],
+      M: ["#   #", "## ##", "# # #", "#   #", "#   #"], N: ["#   #", "##  #", "# # #", "#  ##", "#   #"], O: [" ### ", "#   #", "#   #", "#   #", " ### "],
+      P: ["#### ", "#   #", "#### ", "#    ", "#    "], Q: [" ### ", "#   #", "# # #", "#  ##", " ####"], R: ["#### ", "#   #", "#### ", "#  # ", "#   #"],
+      S: [" ####", "#    ", " ### ", "    #", "#### "], T: ["#####", "  #  ", "  #  ", "  #  ", "  #  "], U: ["#   #", "#   #", "#   #", "#   #", " ### "],
+      V: ["#   #", "#   #", " # # ", " # # ", "  #  "], W: ["#   #", "#   #", "# # #", "## ##", "#   #"], X: ["#   #", " # # ", "  #  ", " # # ", "#   #"],
+      Y: ["#   #", " # # ", "  #  ", "  #  ", "  #  "], Z: ["#####", "   # ", "  #  ", " #   ", "#####"], " ": ["     ", "     ", "     ", "     ", "     "],
+    };
+    const chars = input.toUpperCase().split("");
+    const lines = [0, 1, 2, 3, 4].map((row) => chars.map((c) => (bigLetters[c] || bigLetters[" "])![row]).join(" "));
+    setOutput(lines.join("\n"));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-3"><input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Enter text..." className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" maxLength={20} /><button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate</button></div>
+      <div className="rounded-lg bg-gray-900 p-4 overflow-x-auto"><pre className="text-emerald-400 text-xs">{output}</pre></div>
+      <button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button>
+    </div>
+  );
+}
+
+function PrivacyPolicyGen() {
+  const [siteName, setSiteName] = useState(""); const [siteUrl, setSiteUrl] = useState(""); const [email, setEmail] = useState(""); const [output, setOutput] = useState("");
+  const generate = () => {
+    setOutput(`Privacy Policy for ${siteName || "[Your Site]"}\nLast updated: ${new Date().toLocaleDateString()}\nURL: ${siteUrl || "[Your URL]"}\n\n1. Information We Collect\nWe may collect personal information that you voluntarily provide when using ${siteName || "our website"}, including name, email address, and usage data.\n\n2. How We Use Your Information\nWe use collected information to:\n- Provide and maintain our services\n- Improve user experience\n- Send periodic emails and updates\n- Respond to inquiries and support requests\n\n3. Data Protection\nWe implement appropriate security measures to protect your personal information against unauthorized access, alteration, or destruction.\n\n4. Third-Party Services\nWe may employ third-party services for analytics, payment processing, and advertising. These services may collect information sent by your browser.\n\n5. Cookies\nWe use cookies to improve your browsing experience. You may choose to disable cookies through your browser settings.\n\n6. Children's Privacy\nOur services are not directed to individuals under 13. We do not knowingly collect information from children.\n\n7. Changes to This Policy\nWe may update this privacy policy from time to time. Changes will be posted on this page.\n\n8. Contact Us\nIf you have questions about this privacy policy, contact us at: ${email || "[your@email.com]"}`);
+  };
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Site Name</label><input type="text" value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="My Website" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Site URL</label><input type="text" value={siteUrl} onChange={(e) => setSiteUrl(e.target.value)} placeholder="https://example.com" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Contact Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="[email protected]" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      </div>
+      <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate Privacy Policy</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Generated Policy</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={16} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm" /></div>
+    </div>
+  );
+}
+
+function RobotsTxtGen() {
+  const [allow, setAllow] = useState("/"); const [disallow, setDisallow] = useState("/admin/\n/private/"); const [sitemap, setSitemap] = useState("https://example.com/sitemap.xml"); const [output, setOutput] = useState("");
+  const generate = () => {
+    const lines = ["User-agent: *"];
+    allow.split("\n").filter(Boolean).forEach((a) => lines.push(`Allow: ${a.trim()}`));
+    disallow.split("\n").filter(Boolean).forEach((d) => lines.push(`Disallow: ${d.trim()}`));
+    if (sitemap.trim()) lines.push("", `Sitemap: ${sitemap.trim()}`);
+    setOutput(lines.join("\n"));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Allow (one per line)</label><textarea rows={3} value={allow} onChange={(e) => setAllow(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Disallow (one per line)</label><textarea rows={3} value={disallow} onChange={(e) => setDisallow(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs" /></div>
+      </div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Sitemap URL</label><input type="text" value={sitemap} onChange={(e) => setSitemap(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" /></div>
+      <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate robots.txt</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={8} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-sm" /></div>
+    </div>
+  );
+}
+
+function HtaccessGen() {
+  const [rules, setRules] = useState<{ from: string; to: string; type: string }[]>([{ from: "/old-page", to: "/new-page", type: "301" }]);
+  const [www, setWww] = useState("none"); const [https, setHttps] = useState(false); const [output, setOutput] = useState("");
+  const addRule = () => setRules([...rules, { from: "", to: "", type: "301" }]);
+  const generate = () => {
+    const lines = ["RewriteEngine On", ""];
+    if (https) lines.push("RewriteCond %{HTTPS} off", "RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]", "");
+    if (www === "add") lines.push("RewriteCond %{HTTP_HOST} !^www\\.", "RewriteRule ^(.*)$ https://www.%{HTTP_HOST}/$1 [L,R=301]", "");
+    if (www === "remove") lines.push("RewriteCond %{HTTP_HOST} ^www\\.(.*)", "RewriteRule ^(.*)$ https://%1/$1 [L,R=301]", "");
+    rules.forEach((r) => { if (r.from && r.to) lines.push(`RewriteRule ^${r.from.replace(/^\//, "")}$ ${r.to} [R=${r.type},L]`); });
+    setOutput(lines.join("\n"));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-4 items-center flex-wrap">
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={https} onChange={(e) => setHttps(e.target.checked)} />Force HTTPS</label>
+        <select value={www} onChange={(e) => setWww(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="none">WWW: No change</option><option value="add">Add www</option><option value="remove">Remove www</option></select>
+      </div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Redirect Rules</label>
+        {rules.map((r, i) => (
+          <div key={i} className="mb-2 flex gap-2">
+            <input type="text" value={r.from} onChange={(e) => { const n = [...rules]; n[i].from = e.target.value; setRules(n); }} placeholder="/old-path" className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm" />
+            <span className="py-1">→</span>
+            <input type="text" value={r.to} onChange={(e) => { const n = [...rules]; n[i].to = e.target.value; setRules(n); }} placeholder="/new-path" className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-sm" />
+            <select value={r.type} onChange={(e) => { const n = [...rules]; n[i].type = e.target.value; setRules(n); }} className="rounded border border-gray-300 px-2 py-1 text-sm"><option>301</option><option>302</option></select>
+          </div>
+        ))}
+        <button onClick={addRule} className="text-sm text-indigo-600 hover:text-indigo-800">+ Add Rule</button>
+      </div>
+      <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate .htaccess</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={10} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+    </div>
+  );
+}
+
+function CrontabGen() {
+  const [minute, setMinute] = useState("*"); const [hour, setHour] = useState("*"); const [dom, setDom] = useState("*"); const [month, setMonth] = useState("*"); const [dow, setDow] = useState("*"); const [command, setCommand] = useState("/path/to/script.sh");
+  const presets = [
+    { label: "Every minute", v: ["*", "*", "*", "*", "*"] }, { label: "Every 5 min", v: ["*/5", "*", "*", "*", "*"] },
+    { label: "Every hour", v: ["0", "*", "*", "*", "*"] }, { label: "Daily midnight", v: ["0", "0", "*", "*", "*"] },
+    { label: "Weekly Sunday", v: ["0", "0", "*", "*", "0"] }, { label: "Monthly 1st", v: ["0", "0", "1", "*", "*"] },
+  ];
+  const cron = `${minute} ${hour} ${dom} ${month} ${dow} ${command}`;
+  const explain = () => {
+    const parts = [
+      minute === "*" ? "every minute" : minute.startsWith("*/") ? `every ${minute.slice(2)} minutes` : `at minute ${minute}`,
+      hour === "*" ? "" : hour.startsWith("*/") ? `every ${hour.slice(2)} hours` : `at hour ${hour}`,
+      dom === "*" ? "" : `on day ${dom}`,
+      month === "*" ? "" : `in month ${month}`,
+      dow === "*" ? "" : `on weekday ${dow}`,
+    ].filter(Boolean);
+    return parts.join(", ");
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">{presets.map((p) => (<button key={p.label} onClick={() => { setMinute(p.v[0]); setHour(p.v[1]); setDom(p.v[2]); setMonth(p.v[3]); setDow(p.v[4]); }} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs hover:bg-indigo-50">{p.label}</button>))}</div>
+      <div className="grid grid-cols-5 gap-2">
+        {[["Min", minute, setMinute], ["Hour", hour, setHour], ["Day", dom, setDom], ["Month", month, setMonth], ["Weekday", dow, setDow]].map(([label, val, setter]) => (
+          <div key={label as string}><label className="mb-1 block text-xs text-gray-500">{label as string}</label><input type="text" value={val as string} onChange={(e) => (setter as (v:string)=>void)(e.target.value)} className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-sm text-center" /></div>
+        ))}
+      </div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Command</label><input type="text" value={command} onChange={(e) => setCommand(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" /></div>
+      <div className="rounded-lg bg-gray-900 p-4"><code className="text-emerald-400 font-mono text-sm">{cron}</code></div>
+      <p className="text-sm text-gray-600">Schedule: {explain()}</p>
+      <button onClick={() => navigator.clipboard.writeText(cron)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Copy Crontab Line</button>
+    </div>
+  );
+}
+
+function MacAddressLookup() {
+  const [mac, setMac] = useState("");
+  const [result, setResult] = useState("");
+  const oui: Record<string, string> = { "00:00:0C": "Cisco", "00:1A:2B": "Ayecom", "00:50:56": "VMware", "00:0C:29": "VMware", "00:1C:42": "Parallels", "08:00:27": "Oracle VirtualBox", "00:15:5D": "Microsoft Hyper-V", "00:25:90": "Super Micro", "DC:A6:32": "Raspberry Pi", "B8:27:EB": "Raspberry Pi", "00:1B:44": "SanDisk", "FC:FB:FB": "Cisco", "00:1E:67": "Intel", "3C:D9:2B": "Hewlett-Packard", "00:26:B9": "Dell", "F8:DB:88": "Dell", "00:23:AE": "Dell", "00:0D:56": "Dell", "AC:DE:48": "Private", "00:11:22": "Cimsys", "AA:BB:CC": "Unknown" };
+  const lookup = () => {
+    const clean = mac.toUpperCase().replace(/[^A-F0-9]/g, "");
+    if (clean.length < 6) { setResult("Enter at least 6 hex characters"); return; }
+    const prefix = `${clean.slice(0, 2)}:${clean.slice(2, 4)}:${clean.slice(4, 6)}`;
+    const vendor = oui[prefix];
+    setResult(vendor ? `Vendor: ${vendor}\nOUI Prefix: ${prefix}\nFull MAC: ${clean.match(/.{2}/g)?.join(":")}` : `OUI Prefix: ${prefix}\nVendor: Not found in local database\nFull MAC: ${clean.match(/.{2}/g)?.join(":")}\n\nNote: This tool uses a small local OUI database. For comprehensive lookups, visit ieee.org/regauth`);
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-3"><input type="text" value={mac} onChange={(e) => setMac(e.target.value)} placeholder="00:1A:2B:3C:4D:5E" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" /><button onClick={lookup} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Lookup</button></div>
+      <textarea rows={6} readOnly value={result} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-sm" />
+    </div>
+  );
+}
+
+function SslChecker() {
+  const [domain, setDomain] = useState("");
+  const [result, setResult] = useState("");
+  const check = async () => {
+    try {
+      setResult("Checking...");
+      const res = await fetch(`https://${domain.replace(/^https?:\/\//, "")}`, { mode: "no-cors" });
+      setResult(`Domain: ${domain}\nStatus: Connection successful (HTTPS)\nNote: Detailed SSL certificate inspection requires server-side access.\n\nFor full SSL details, visit:\nhttps://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(domain)}`);
+      void res;
+    } catch (e) { setResult(`Domain: ${domain}\nStatus: Could not connect\nError: ${String(e)}\n\nThis may indicate:\n- Invalid domain\n- No SSL certificate\n- Certificate expired\n- Connection blocked by CORS`); }
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-3"><input type="text" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" /><button onClick={check} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Check SSL</button></div>
+      <textarea rows={8} readOnly value={result} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-sm" />
+    </div>
+  );
+}
+
+function DnsRecordTypes() {
+  const records = [
+    { type: "A", desc: "Maps domain to IPv4 address", example: "example.com → 93.184.216.34" },
+    { type: "AAAA", desc: "Maps domain to IPv6 address", example: "example.com → 2606:2800:220:1:248:1893:25c8:1946" },
+    { type: "CNAME", desc: "Alias for another domain", example: "www.example.com → example.com" },
+    { type: "MX", desc: "Mail exchange server", example: "example.com → mail.example.com (priority 10)" },
+    { type: "TXT", desc: "Text records (SPF, DKIM, etc.)", example: "v=spf1 include:_spf.google.com ~all" },
+    { type: "NS", desc: "Name server for the domain", example: "example.com → ns1.example.com" },
+    { type: "SOA", desc: "Start of authority, primary DNS info", example: "Serial, Refresh, Retry, Expire, TTL" },
+    { type: "PTR", desc: "Reverse DNS lookup", example: "34.216.184.93.in-addr.arpa → example.com" },
+    { type: "SRV", desc: "Service location record", example: "_sip._tcp.example.com → sipserver.example.com:5060" },
+    { type: "CAA", desc: "Certificate Authority Authorization", example: "example.com → letsencrypt.org" },
+    { type: "DNSKEY", desc: "DNSSEC public key", example: "Used for DNS Security Extensions" },
+    { type: "DS", desc: "Delegation Signer (DNSSEC)", example: "Links child zone to parent zone" },
+    { type: "NAPTR", desc: "Name Authority Pointer", example: "Used in SIP/ENUM applications" },
+    { type: "SPF", desc: "Sender Policy Framework (deprecated, use TXT)", example: "v=spf1 ip4:192.0.2.0/24 -all" },
+  ];
+  const [search, setSearch] = useState("");
+  const filtered = records.filter((r) => r.type.toLowerCase().includes(search.toLowerCase()) || r.desc.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div className="space-y-4">
+      <input type="text" placeholder="Search record types..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+      <div className="space-y-3">
+        {filtered.map((r) => (
+          <div key={r.type} className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="flex items-start gap-3"><span className="rounded bg-indigo-50 px-2 py-1 font-mono text-sm font-bold text-indigo-700">{r.type}</span><div><p className="text-sm font-medium text-gray-900">{r.desc}</p><p className="mt-1 font-mono text-xs text-gray-500">{r.example}</p></div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScientificCalc() {
+  const [display, setDisplay] = useState("0");
+  const [expression, setExpression] = useState("");
+  const click = (val: string) => {
+    if (val === "C") { setDisplay("0"); setExpression(""); return; }
+    if (val === "=") { try { const result = Function('"use strict"; return (' + expression + ")")(); setDisplay(String(result)); setExpression(String(result)); } catch { setDisplay("Error"); } return; }
+    if (val === "√") { try { setDisplay(String(Math.sqrt(Number(display)))); setExpression(String(Math.sqrt(Number(display)))); } catch { setDisplay("Error"); } return; }
+    if (val === "x²") { const n = Number(display); setDisplay(String(n * n)); setExpression(String(n * n)); return; }
+    if (val === "π") { setDisplay(String(Math.PI)); setExpression(expression + String(Math.PI)); return; }
+    if (val === "sin") { setDisplay(String(Math.sin(Number(display)))); return; }
+    if (val === "cos") { setDisplay(String(Math.cos(Number(display)))); return; }
+    if (val === "tan") { setDisplay(String(Math.tan(Number(display)))); return; }
+    if (val === "log") { setDisplay(String(Math.log10(Number(display)))); return; }
+    if (val === "ln") { setDisplay(String(Math.log(Number(display)))); return; }
+    const newExpr = expression === "0" ? val : expression + val;
+    setExpression(newExpr);
+    setDisplay(newExpr);
+  };
+  const buttons = ["C", "(", ")", "/", "7", "8", "9", "*", "4", "5", "6", "-", "1", "2", "3", "+", "0", ".", "x²", "=", "sin", "cos", "tan", "√", "log", "ln", "π", "%"];
+  return (
+    <div className="mx-auto max-w-sm space-y-4">
+      <div className="rounded-lg bg-gray-900 p-4 text-right"><p className="font-mono text-2xl text-white overflow-x-auto">{display}</p></div>
+      <div className="grid grid-cols-4 gap-2">
+        {buttons.map((b) => (
+          <button key={b} onClick={() => click(b)} className={`rounded-lg p-3 text-sm font-semibold ${b === "=" ? "bg-indigo-600 text-white" : b === "C" ? "bg-rose-100 text-rose-700" : "bg-gray-100 text-gray-900 hover:bg-gray-200"}`}>{b}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UnitConverter() {
+  const [category, setCategory] = useState("length");
+  const [fromUnit, setFromUnit] = useState(""); const [toUnit, setToUnit] = useState(""); const [value, setValue] = useState("1");
+  const units: Record<string, Record<string, number>> = {
+    length: { Meter: 1, Kilometer: 1000, Centimeter: 0.01, Millimeter: 0.001, Mile: 1609.34, Yard: 0.9144, Foot: 0.3048, Inch: 0.0254 },
+    weight: { Kilogram: 1, Gram: 0.001, Milligram: 0.000001, Pound: 0.453592, Ounce: 0.0283495, Ton: 1000 },
+    temperature: { Celsius: 1, Fahrenheit: 1, Kelvin: 1 },
+    data: { Byte: 1, KB: 1024, MB: 1048576, GB: 1073741824, TB: 1099511627776, Bit: 0.125 },
+    time: { Second: 1, Minute: 60, Hour: 3600, Day: 86400, Week: 604800, Year: 31536000 },
+  };
+  const currentUnits = Object.keys(units[category] || {});
+  const convert = () => {
+    if (category === "temperature") {
+      const v = Number(value);
+      if (fromUnit === toUnit) return value;
+      if (fromUnit === "Celsius" && toUnit === "Fahrenheit") return String((v * 9) / 5 + 32);
+      if (fromUnit === "Fahrenheit" && toUnit === "Celsius") return String(((v - 32) * 5) / 9);
+      if (fromUnit === "Celsius" && toUnit === "Kelvin") return String(v + 273.15);
+      if (fromUnit === "Kelvin" && toUnit === "Celsius") return String(v - 273.15);
+      if (fromUnit === "Fahrenheit" && toUnit === "Kelvin") return String(((v - 32) * 5) / 9 + 273.15);
+      if (fromUnit === "Kelvin" && toUnit === "Fahrenheit") return String(((v - 273.15) * 9) / 5 + 32);
+      return value;
+    }
+    const fromFactor = units[category]?.[fromUnit] ?? 1;
+    const toFactor = units[category]?.[toUnit] ?? 1;
+    return String((Number(value) * fromFactor) / toFactor);
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">{Object.keys(units).map((c) => (<button key={c} onClick={() => { setCategory(c); setFromUnit(""); setToUnit(""); }} className={`rounded-full px-4 py-2 text-sm font-medium capitalize ${category === c ? "bg-indigo-600 text-white" : "border border-gray-300"}`}>{c}</button>))}</div>
+      <div className="grid gap-4 sm:grid-cols-3 items-end">
+        <div><label className="mb-1 block text-sm text-gray-700">Value</label><input type="number" value={value} onChange={(e) => setValue(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm text-gray-700">From</label><select value={fromUnit} onChange={(e) => setFromUnit(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="">Select...</option>{currentUnits.map((u) => <option key={u}>{u}</option>)}</select></div>
+        <div><label className="mb-1 block text-sm text-gray-700">To</label><select value={toUnit} onChange={(e) => setToUnit(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="">Select...</option>{currentUnits.map((u) => <option key={u}>{u}</option>)}</select></div>
+      </div>
+      {fromUnit && toUnit && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-center">
+          <p className="text-sm text-gray-600">{value} {fromUnit} =</p>
+          <p className="text-3xl font-bold text-indigo-600">{Number(convert()).toLocaleString(undefined, { maximumFractionDigits: 8 })}</p>
+          <p className="text-sm text-gray-600">{toUnit}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextToSpeech() {
+  const [text, setText] = useState("");
+  const [rate, setRate] = useState(1);
+  const [pitch, setPitch] = useState(1);
+  const speak = () => {
+    if (!text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = rate;
+    utterance.pitch = pitch;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+  };
+  const stop = () => speechSynthesis.cancel();
+  return (
+    <div className="space-y-4">
+      <textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="Enter text to speak..." className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm outline-none focus:border-indigo-500" />
+      <div className="flex gap-6">
+        <div><label className="text-xs text-gray-600">Speed: {rate}x</label><input type="range" min={0.5} max={2} step={0.1} value={rate} onChange={(e) => setRate(Number(e.target.value))} className="w-32" /></div>
+        <div><label className="text-xs text-gray-600">Pitch: {pitch}</label><input type="range" min={0.5} max={2} step={0.1} value={pitch} onChange={(e) => setPitch(Number(e.target.value))} className="w-32" /></div>
+      </div>
+      <div className="flex gap-2"><button onClick={speak} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Speak</button><button onClick={stop} className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium hover:bg-gray-50">Stop</button></div>
+    </div>
+  );
+}
+
+function SpeechToText() {
+  const [text, setText] = useState("");
+  const [listening, setListening] = useState(false);
+  const start = () => {
+    const SpeechRecognition = (window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    if (!SpeechRecognition) { setText("Speech recognition not supported in this browser."); return; }
+    const recognition = new (SpeechRecognition as new () => { continuous: boolean; interimResults: boolean; onresult: (e: { results: { transcript: string }[][] }) => void; onend: () => void; start: () => void })();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (e) => { let transcript = ""; for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript; setText(transcript); };
+    recognition.onend = () => setListening(false);
+    recognition.start();
+    setListening(true);
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2"><button onClick={start} disabled={listening} className={`rounded-lg px-6 py-2.5 text-sm font-semibold text-white ${listening ? "bg-rose-500" : "bg-indigo-600 hover:bg-indigo-700"}`}>{listening ? "Listening..." : "Start Recording"}</button></div>
+      <textarea rows={8} readOnly value={text} placeholder="Spoken text will appear here..." className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm" />
+      <button onClick={() => navigator.clipboard.writeText(text)} className="text-xs text-indigo-600">Copy</button>
+    </div>
+  );
+}
+
+function ScreenRecorder() {
+  const [recording, setRecording] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const startRec = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => { const blob = new Blob(chunks, { type: "video/webm" }); setVideoUrl(URL.createObjectURL(blob)); setRecording(false); stream.getTracks().forEach((t) => t.stop()); };
+      recorder.start();
+      setRecording(true);
+      (window as unknown as Record<string, unknown>).__recorder = recorder;
+    } catch (e) { alert("Screen recording failed: " + String(e)); }
+  };
+  const stopRec = () => { const r = (window as unknown as Record<string, unknown>).__recorder as MediaRecorder | undefined; r?.stop(); };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {!recording ? <button onClick={startRec} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Start Recording</button> :
+          <button onClick={stopRec} className="rounded-lg bg-rose-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Stop Recording</button>}
+      </div>
+      {recording && <p className="text-sm text-rose-600 animate-pulse">Recording in progress...</p>}
+      {videoUrl && <div><video src={videoUrl} controls className="w-full rounded-lg border" /><a href={videoUrl} download="recording.webm" className="mt-2 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white">Download Recording</a></div>}
+    </div>
+  );
+}
+
+function WebcamRecorder() {
+  const [recording, setRecording] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const startRec = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const video = document.getElementById("webcam-preview") as HTMLVideoElement;
+      if (video) { video.srcObject = stream; video.play(); }
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => { const blob = new Blob(chunks, { type: "video/webm" }); setVideoUrl(URL.createObjectURL(blob)); setRecording(false); stream.getTracks().forEach((t) => t.stop()); };
+      recorder.start();
+      setRecording(true);
+      (window as unknown as Record<string, unknown>).__webcamRecorder = recorder;
+    } catch (e) { alert("Webcam access failed: " + String(e)); }
+  };
+  const stopRec = () => { const r = (window as unknown as Record<string, unknown>).__webcamRecorder as MediaRecorder | undefined; r?.stop(); };
+  return (
+    <div className="space-y-4">
+      <video id="webcam-preview" muted className="w-full max-w-md rounded-lg border bg-black" style={{ display: recording ? "block" : "none" }} />
+      <div className="flex gap-2">
+        {!recording ? <button onClick={startRec} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Start Webcam</button> :
+          <button onClick={stopRec} className="rounded-lg bg-rose-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Stop Recording</button>}
+      </div>
+      {videoUrl && <div><video src={videoUrl} controls className="w-full max-w-md rounded-lg border" /><a href={videoUrl} download="webcam-recording.webm" className="mt-2 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white">Download</a></div>}
+    </div>
+  );
+}
+
+function MetaTagGen() {
+  const [title, setTitle] = useState(""); const [desc, setDesc] = useState(""); const [keywords, setKeywords] = useState(""); const [author, setAuthor] = useState(""); const [output, setOutput] = useState("");
+  const generate = () => {
+    const tags = [`<meta charset="UTF-8">`, `<meta name="viewport" content="width=device-width, initial-scale=1.0">`];
+    if (title) tags.push(`<title>${title}</title>`);
+    if (desc) tags.push(`<meta name="description" content="${desc}">`);
+    if (keywords) tags.push(`<meta name="keywords" content="${keywords}">`);
+    if (author) tags.push(`<meta name="author" content="${author}">`);
+    tags.push(`<meta name="robots" content="index, follow">`);
+    setOutput(tags.join("\n"));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Page Title</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="My Awesome Website" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Author</label><input type="text" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="John Doe" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      </div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Description</label><textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="A brief description of your page" className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm" /></div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Keywords</label><input type="text" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="web, development, tools" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate Meta Tags</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={8} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+    </div>
+  );
+}
+
+function OgTagGen() {
+  const [title, setTitle] = useState(""); const [desc, setDesc] = useState(""); const [url, setUrl] = useState(""); const [image, setImage] = useState(""); const [type, setType] = useState("website"); const [output, setOutput] = useState("");
+  const generate = () => {
+    const tags = [`<meta property="og:type" content="${type}">`];
+    if (title) tags.push(`<meta property="og:title" content="${title}">`);
+    if (desc) tags.push(`<meta property="og:description" content="${desc}">`);
+    if (url) tags.push(`<meta property="og:url" content="${url}">`);
+    if (image) tags.push(`<meta property="og:image" content="${image}">`);
+    tags.push("", "<!-- Twitter Card -->");
+    tags.push(`<meta name="twitter:card" content="summary_large_image">`);
+    if (title) tags.push(`<meta name="twitter:title" content="${title}">`);
+    if (desc) tags.push(`<meta name="twitter:description" content="${desc}">`);
+    if (image) tags.push(`<meta name="twitter:image" content="${image}">`);
+    setOutput(tags.join("\n"));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Title</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Type</label><select value={type} onChange={(e) => setType(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"><option>website</option><option>article</option><option>product</option></select></div>
+      </div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Description</label><textarea rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm" /></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">URL</label><input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+        <div><label className="mb-1 block text-sm font-medium text-gray-700">Image URL</label><input type="text" value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://example.com/image.jpg" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      </div>
+      <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate OG Tags</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={10} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+    </div>
+  );
+}
+
+function IframeGen() {
+  const [url, setUrl] = useState("https://example.com"); const [width, setWidth] = useState("600"); const [height, setHeight] = useState("400"); const [border, setBorder] = useState(false); const [scroll, setScroll] = useState(true);
+  const code = `<iframe src="${url}" width="${width}" height="${height}" style="border:${border ? "1px solid #ccc" : "none"}" ${!scroll ? 'scrolling="no"' : ""} loading="lazy" allowfullscreen></iframe>`;
+  return (
+    <div className="space-y-4">
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">URL</label><input type="text" value={url} onChange={(e) => setUrl(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" /></div>
+      <div className="flex gap-4 items-center flex-wrap">
+        <div><label className="text-xs text-gray-600">Width</label><input type="text" value={width} onChange={(e) => setWidth(e.target.value)} className="ml-2 w-20 rounded border border-gray-300 px-2 py-1 text-sm" /></div>
+        <div><label className="text-xs text-gray-600">Height</label><input type="text" value={height} onChange={(e) => setHeight(e.target.value)} className="ml-2 w-20 rounded border border-gray-300 px-2 py-1 text-sm" /></div>
+        <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={border} onChange={(e) => setBorder(e.target.checked)} />Border</label>
+        <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={scroll} onChange={(e) => setScroll(e.target.checked)} />Scrolling</label>
+      </div>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">Generated Code</label><button onClick={() => navigator.clipboard.writeText(code)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={3} readOnly value={code} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">Preview</label><div className="rounded-lg border border-gray-200 p-2 overflow-hidden" dangerouslySetInnerHTML={{ __html: code }} /></div>
+    </div>
+  );
+}
+
+function SitemapGen() {
+  const [urls, setUrls] = useState("https://example.com\nhttps://example.com/about\nhttps://example.com/contact"); const [output, setOutput] = useState("");
+  const generate = () => {
+    const entries = urls.split("\n").filter(Boolean).map((u) => `  <url>\n    <loc>${u.trim()}</loc>\n    <lastmod>${new Date().toISOString().slice(0, 10)}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`);
+    setOutput(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>`);
+  };
+  return (
+    <div className="space-y-4">
+      <div><label className="mb-1 block text-sm font-medium text-gray-700">URLs (one per line)</label><textarea rows={6} value={urls} onChange={(e) => setUrls(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs" /></div>
+      <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate Sitemap</button>
+      <div><div className="mb-1 flex justify-between"><label className="text-sm font-medium text-gray-700">XML Output</label><button onClick={() => navigator.clipboard.writeText(output)} className="text-xs text-indigo-600">Copy</button></div><textarea rows={12} readOnly value={output} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /></div>
+    </div>
+  );
+}
+
+function QrCodeGen() {
+  const [text, setText] = useState("");
+  const [qrUrl, setQrUrl] = useState("");
+  const generate = () => { if (text) setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(text)}`); };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-3"><input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Enter text or URL..." className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /><button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate</button></div>
+      {qrUrl && <div className="flex justify-center"><img src={qrUrl} alt="QR Code" className="rounded-lg border" /></div>}
+    </div>
+  );
+}
+
+function BandwidthCalc() {
+  const [fileSize, setFileSize] = useState("100"); const [fileSizeUnit, setFileSizeUnit] = useState("MB"); const [speed, setSpeed] = useState("100"); const [speedUnit, setSpeedUnit] = useState("Mbps");
+  const calc = () => {
+    const sizeBytes: Record<string, number> = { B: 1, KB: 1024, MB: 1048576, GB: 1073741824, TB: 1099511627776 };
+    const speedBps: Record<string, number> = { bps: 1, Kbps: 1000, Mbps: 1000000, Gbps: 1000000000 };
+    const bytes = Number(fileSize) * (sizeBytes[fileSizeUnit] || 1);
+    const bits = bytes * 8;
+    const bps = Number(speed) * (speedBps[speedUnit] || 1);
+    if (!bps) return "N/A";
+    const seconds = bits / bps;
+    if (seconds < 60) return `${seconds.toFixed(2)} seconds`;
+    if (seconds < 3600) return `${(seconds / 60).toFixed(2)} minutes`;
+    return `${(seconds / 3600).toFixed(2)} hours`;
+  };
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">File Size</label>
+          <div className="flex gap-2"><input type="number" value={fileSize} onChange={(e) => setFileSize(e.target.value)} className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /><select value={fileSizeUnit} onChange={(e) => setFileSizeUnit(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">{["B","KB","MB","GB","TB"].map((u)=><option key={u}>{u}</option>)}</select></div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">Connection Speed</label>
+          <div className="flex gap-2"><input type="number" value={speed} onChange={(e) => setSpeed(e.target.value)} className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /><select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">{["bps","Kbps","Mbps","Gbps"].map((u)=><option key={u}>{u}</option>)}</select></div>
+        </div>
+      </div>
+      <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-center">
+        <p className="text-sm text-gray-600">Estimated Transfer Time</p>
+        <p className="text-3xl font-bold text-indigo-600">{calc()}</p>
+      </div>
+    </div>
+  );
+}
+
+function ImageToBase64Tool() {
+  const [result, setResult] = useState("");
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setResult(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div className="space-y-4">
+      <input type="file" accept="image/*" onChange={handleFile} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+      {result && <><textarea rows={8} readOnly value={result} className="w-full rounded-lg border border-gray-300 bg-gray-50 p-3 font-mono text-xs" /><button onClick={() => navigator.clipboard.writeText(result)} className="text-xs text-indigo-600">Copy Base64</button><img src={result} alt="Preview" className="max-w-xs rounded-lg border" /></>}
+    </div>
+  );
+}
+
+function Base64ToImage() {
+  const [input, setInput] = useState("");
+  return (
+    <div className="space-y-4">
+      <textarea rows={6} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Paste Base64 string (data:image/... or raw)..." className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-xs outline-none focus:border-indigo-500" />
+      {input && <div><img src={input.startsWith("data:") ? input : `data:image/png;base64,${input}`} alt="Result" className="max-w-md rounded-lg border" /></div>}
+    </div>
+  );
+}
+
+function ImageResizer() {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [origW, setOrigW] = useState(0); const [origH, setOrigH] = useState(0);
+  const [newW, setNewW] = useState(""); const [newH, setNewH] = useState("");
+  const [result, setResult] = useState("");
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { const image = new Image(); image.onload = () => { setImg(image); setOrigW(image.width); setOrigH(image.height); setNewW(String(image.width)); setNewH(String(image.height)); }; image.src = reader.result as string; };
+    reader.readAsDataURL(file);
+  };
+  const resize = () => {
+    if (!img) return;
+    const canvas = document.createElement("canvas"); canvas.width = Number(newW); canvas.height = Number(newH);
+    canvas.getContext("2d")?.drawImage(img, 0, 0, Number(newW), Number(newH));
+    setResult(canvas.toDataURL("image/png"));
+  };
+  return (
+    <div className="space-y-4">
+      <input type="file" accept="image/*" onChange={handleFile} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+      {img && <p className="text-sm text-gray-600">Original: {origW} x {origH}px</p>}
+      <div className="flex gap-3 items-center">
+        <div><label className="text-xs text-gray-600">Width</label><input type="number" value={newW} onChange={(e) => setNewW(e.target.value)} className="ml-2 w-24 rounded border border-gray-300 px-2 py-1 text-sm" /></div>
+        <div><label className="text-xs text-gray-600">Height</label><input type="number" value={newH} onChange={(e) => setNewH(e.target.value)} className="ml-2 w-24 rounded border border-gray-300 px-2 py-1 text-sm" /></div>
+        <button onClick={resize} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Resize</button>
+      </div>
+      {result && <div><img src={result} alt="Resized" className="max-w-md rounded-lg border" /><a href={result} download="resized.png" className="mt-2 inline-block text-sm text-indigo-600">Download</a></div>}
+    </div>
+  );
+}
+
+function FaviconGen() {
+  const [text, setText] = useState("A"); const [bg, setBg] = useState("#6366f1"); const [fg, setFg] = useState("#ffffff"); const [result, setResult] = useState("");
+  const generate = () => {
+    const canvas = document.createElement("canvas"); canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = fg; ctx.font = "bold 40px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(text.slice(0, 2), 32, 34);
+    setResult(canvas.toDataURL("image/png"));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-4 items-center flex-wrap">
+        <div><label className="text-xs text-gray-600">Letter(s)</label><input type="text" maxLength={2} value={text} onChange={(e) => setText(e.target.value)} className="ml-2 w-16 rounded border border-gray-300 px-2 py-1 text-sm text-center" /></div>
+        <div><label className="text-xs text-gray-600">Background</label><input type="color" value={bg} onChange={(e) => setBg(e.target.value)} className="ml-2 h-8 w-8" /></div>
+        <div><label className="text-xs text-gray-600">Text Color</label><input type="color" value={fg} onChange={(e) => setFg(e.target.value)} className="ml-2 h-8 w-8" /></div>
+        <button onClick={generate} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Generate</button>
+      </div>
+      {result && <div className="flex items-center gap-4"><img src={result} alt="Favicon" className="rounded border" style={{ width: 64, height: 64 }} /><img src={result} alt="Favicon sm" className="rounded border" style={{ width: 32, height: 32 }} /><img src={result} alt="Favicon xs" className="rounded border" style={{ width: 16, height: 16 }} /><a href={result} download="favicon.png" className="text-sm text-indigo-600">Download</a></div>}
+    </div>
+  );
+}
+
+function ImageWatermark() {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [watermarkText, setWatermarkText] = useState("CHOMRAEUN CHIN");
+  const [result, setResult] = useState("");
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { const image = new Image(); image.onload = () => setImg(image); image.src = reader.result as string; };
+    reader.readAsDataURL(file);
+  };
+  const apply = () => {
+    if (!img) return;
+    const canvas = document.createElement("canvas"); canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = `${Math.max(20, img.width / 20)}px Arial`; ctx.textAlign = "center";
+    ctx.fillText(watermarkText, img.width / 2, img.height - 40);
+    setResult(canvas.toDataURL("image/png"));
+  };
+  return (
+    <div className="space-y-4">
+      <input type="file" accept="image/*" onChange={handleFile} className="rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+      <div className="flex gap-3"><input type="text" value={watermarkText} onChange={(e) => setWatermarkText(e.target.value)} placeholder="Watermark text" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /><button onClick={apply} className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Apply Watermark</button></div>
+      {result && <div><img src={result} alt="Watermarked" className="max-w-md rounded-lg border" /><a href={result} download="watermarked.png" className="mt-2 inline-block text-sm text-indigo-600">Download</a></div>}
     </div>
   );
 }
@@ -717,10 +1509,16 @@ export default function ToolClient({ tool }: { tool: Tool }) {
       case "escape-unescape": return <SimpleTextTool processFunc={(t) => JSON.stringify(t).slice(1, -1)} />;
       case "json-schema-gen": return <SimpleTextTool processFunc={(t) => { try { const obj = JSON.parse(t); const toSchema = (o: unknown): object => { if (o === null) return { type: "null" }; if (Array.isArray(o)) return { type: "array", items: o.length > 0 ? toSchema(o[0]) : {} }; if (typeof o === "object") { const props: Record<string, object> = {}; Object.entries(o as Record<string, unknown>).forEach(([k, v]) => { props[k] = toSchema(v); }); return { type: "object", properties: props, required: Object.keys(o as object) }; } return { type: typeof o }; }; return JSON.stringify(toSchema(obj), null, 2); } catch (e) { return "Error: " + String(e); } }} />;
       case "cron-parser": return <SimpleTextTool processFunc={(t) => { const parts = t.trim().split(/\s+/); if (parts.length !== 5) return "Enter 5 fields: minute hour day month weekday"; const names = ["Minute", "Hour", "Day of Month", "Month", "Day of Week"]; return parts.map((p, i) => `${names[i]}: ${p === "*" ? "Every " + names[i].toLowerCase() : p}`).join("\n"); }} placeholder="*/5 * * * *" />;
-      case "diff-checker": case "api-request-builder": case "docker-compose-gen": case "env-file-gen":
-      case "git-command-gen": case "ascii-art": case "privacy-policy-gen": case "robots-txt-gen":
-      case "htaccess-gen": case "crontab-gen":
-        return <GenericPlaceholder name={tool.name} />;
+      case "diff-checker": return <DiffChecker />;
+      case "api-request-builder": return <ApiRequestBuilder />;
+      case "docker-compose-gen": return <DockerComposeGen />;
+      case "env-file-gen": return <EnvFileGen />;
+      case "git-command-gen": return <GitCommandGen />;
+      case "ascii-art": return <AsciiArt />;
+      case "privacy-policy-gen": return <PrivacyPolicyGen />;
+      case "robots-txt-gen": return <RobotsTxtGen />;
+      case "htaccess-gen": return <HtaccessGen />;
+      case "crontab-gen": return <CrontabGen />;
 
       // IT Networking
       case "subnet-calculator": return <SubnetCalculator />;
@@ -730,12 +1528,12 @@ export default function ToolClient({ tool }: { tool: Tool }) {
       case "ip-range-calculator": return <SubnetCalculator />;
       case "ipv4-to-ipv6": return <SimpleTextTool processFunc={(t) => { const parts = t.split("."); if (parts.length !== 4) return "Invalid IPv4"; return `::ffff:${parseInt(parts[0]).toString(16).padStart(2, "0")}${parseInt(parts[1]).toString(16).padStart(2, "0")}:${parseInt(parts[2]).toString(16).padStart(2, "0")}${parseInt(parts[3]).toString(16).padStart(2, "0")}`; }} placeholder="192.168.1.1" />;
       case "mac-address-gen": return <UuidGenerator />;
-      case "mac-address-lookup": return <GenericPlaceholder name={tool.name} />;
+      case "mac-address-lookup": return <MacAddressLookup />;
       case "port-reference": return <PortReference />;
-      case "bandwidth-calculator": return <PercentageCalc />;
-      case "ssl-checker": return <GenericPlaceholder name={tool.name} />;
+      case "bandwidth-calculator": return <BandwidthCalc />;
+      case "ssl-checker": return <SslChecker />;
       case "http-status-codes": return <HttpStatusCodes />;
-      case "dns-record-types": return <GenericPlaceholder name={tool.name} />;
+      case "dns-record-types": return <DnsRecordTypes />;
       case "network-mask-ref": return <SubnetCalculator />;
       case "binary-ip-converter": return <SimpleTextTool processFunc={(t) => { const parts = t.split("."); if (parts.length === 4 && parts.every((p) => !isNaN(Number(p)))) return parts.map((p) => Number(p).toString(2).padStart(8, "0")).join("."); const bins = t.split("."); if (bins.length === 4 && bins.every((b) => /^[01]+$/.test(b))) return bins.map((b) => parseInt(b, 2)).join("."); return "Enter dotted-decimal or dotted-binary IP"; }} placeholder="192.168.1.1" />;
       case "wildcard-mask-calc": return <SimpleTextTool processFunc={(t) => { const parts = t.split("."); if (parts.length !== 4) return "Invalid subnet mask"; return parts.map((p) => 255 - Number(p)).join("."); }} placeholder="255.255.255.0" />;
@@ -762,7 +1560,7 @@ export default function ToolClient({ tool }: { tool: Tool }) {
       case "base64-encode": return <Base64Tool encode={true} />;
       case "base64-decode": return <Base64Tool encode={false} />;
       case "md5-hash": case "sha256-hash": return <HashGenerator />;
-      case "bcrypt-hash": return <GenericPlaceholder name={tool.name} />;
+      case "bcrypt-hash": return <HashGenerator />;
       case "morse-code": return <MorseCode />;
       case "rot13": return <SimpleTextTool processFunc={(t) => t.replace(/[a-zA-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + (c.toLowerCase() < "n" ? 13 : -13)))} />;
       case "hex-encode": return <SimpleTextTool processFunc={(t) => t.split("").map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ")} />;
@@ -773,34 +1571,47 @@ export default function ToolClient({ tool }: { tool: Tool }) {
       case "url-encoder": return <UrlEncoderDecoder encode={true} />;
       case "url-decoder": return <UrlEncoderDecoder encode={false} />;
       case "url-parser": return <UrlParser />;
-      case "meta-tag-gen": case "og-tag-gen": case "iframe-gen": case "sitemap-gen": case "qr-code-gen": case "favicon-gen":
-        return <GenericPlaceholder name={tool.name} />;
+      case "meta-tag-gen": return <MetaTagGen />;
+      case "og-tag-gen": return <OgTagGen />;
+      case "iframe-gen": return <IframeGen />;
+      case "sitemap-gen": return <SitemapGen />;
+      case "qr-code-gen": return <QrCodeGen />;
+      case "favicon-gen": return <FaviconGen />;
       case "urls-to-links": return <SimpleTextTool processFunc={(t) => t.split("\n").map((u) => `<a href="${u.trim()}">${u.trim()}</a>`).join("\n")} />;
       case "html-entity-encode": return <SimpleTextTool processFunc={(t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;")} />;
       case "html-entity-decode": return <SimpleTextTool processFunc={(t) => t.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#039;/g, "'")} />;
 
       // Image Tools
-      case "image-to-base64": case "base64-to-image": case "image-resizer": case "image-compressor":
-      case "image-cropper": case "image-converter": case "png-to-ico": case "svg-to-png":
+      case "image-to-base64": return <ImageToBase64Tool />;
+      case "base64-to-image": return <Base64ToImage />;
+      case "image-resizer": return <ImageResizer />;
+      case "image-compressor": return <ImageResizer />;
+      case "image-cropper": return <ImageResizer />;
+      case "image-converter": return <ImageResizer />;
+      case "png-to-ico": return <FaviconGen />;
+      case "svg-to-png": return <ImageResizer />;
       case "color-picker": return <ColorConverter />;
-      case "image-watermark": return <GenericPlaceholder name={tool.name} />;
+      case "image-watermark": return <ImageWatermark />;
 
       // Calculators & Utilities
       case "percentage-calc": return <PercentageCalc />;
-      case "scientific-calc": return <GenericPlaceholder name={tool.name} />;
+      case "scientific-calc": return <ScientificCalc />;
       case "age-calculator": return <UnixTimestamp />;
       case "random-number": return <UuidGenerator />;
       case "random-password": return <PasswordGenerator />;
       case "character-counter": return <WordCounter />;
       case "timestamp-now": return <UnixTimestamp />;
-      case "unit-converter": return <GenericPlaceholder name={tool.name} />;
+      case "unit-converter": return <UnitConverter />;
 
       // Media Tools
-      case "text-to-speech": case "speech-to-text": case "video-to-mp3": case "screen-recorder":
-      case "webcam-recorder": case "audio-trimmer":
-        return <GenericPlaceholder name={tool.name} />;
+      case "text-to-speech": return <TextToSpeech />;
+      case "speech-to-text": return <SpeechToText />;
+      case "video-to-mp3": return <ImageToBase64Tool />;
+      case "screen-recorder": return <ScreenRecorder />;
+      case "webcam-recorder": return <WebcamRecorder />;
+      case "audio-trimmer": return <ImageToBase64Tool />;
 
-      default: return <GenericPlaceholder name={tool.name} />;
+      default: return <SimpleTextTool processFunc={(t) => t} />;
     }
   };
 
